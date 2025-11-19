@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Counter Test - Reverb WebSocket</title>
+    <script src="https://cdn.jsdelivr.net/npm/pusher-js@8.4.0-rc2/dist/web/pusher.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/laravel-echo@1.16.1/dist/echo.iife.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 600px; margin: 50px auto; padding: 20px; }
+        .counter { font-size: 72px; font-weight: bold; color: #2563eb; text-align: center; margin: 30px 0; }
+        .status { padding: 15px; border-radius: 8px; margin: 15px 0; }
+        .connected { background: #d1fae5; color: #065f46; }
+        .disconnected { background: #fee2e2; color: #991b1b; }
+        button { background: #2563eb; color: white; border: none; padding: 15px 30px; font-size: 18px; cursor: pointer; border-radius: 8px; width: 100%; margin: 10px 0; }
+        button:hover { background: #1d4ed8; }
+        .log { background: #f3f4f6; border: 1px solid #d1d5db; padding: 10px; margin: 10px 0; max-height: 200px; overflow-y: auto; font-size: 12px; font-family: monospace; }
+    </style>
+</head>
+<body>
+    <h1>🧪 Reverb Counter Test</h1>
+    
+    <div id="status" class="status disconnected">❌ Not Connected</div>
+    
+    <div class="counter" id="counter">0</div>
+    
+    <button onclick="sendIncrement()">📤 Send Increment</button>
+    <button onclick="connectReverb()">🔌 Reconnect</button>
+    
+    <h3>Event Log:</h3>
+    <div id="log" class="log"></div>
+
+    <script>
+        let echo = null;
+        let counter = 0;
+
+        const log = (msg) => {
+            const logDiv = document.getElementById('log');
+            const time = new Date().toLocaleTimeString();
+            logDiv.innerHTML = `[${time}] ${msg}\n` + logDiv.innerHTML;
+            console.log(msg);
+        };
+
+        const updateStatus = (connected) => {
+            const statusDiv = document.getElementById('status');
+            if (connected) {
+                statusDiv.className = 'status connected';
+                statusDiv.textContent = '✅ Connected to Reverb';
+            } else {
+                statusDiv.className = 'status disconnected';
+                statusDiv.textContent = '❌ Not Connected';
+            }
+        };
+
+        const connectReverb = () => {
+            try {
+                log('Connecting to Reverb...');
+                window.Pusher = Pusher;
+                window.Pusher.logToConsole = true;
+
+                echo = new Echo({
+                    broadcaster: 'reverb',
+                    key: 'ozfq1oewbwd3vaduekjs',
+                    wsHost: 'localhost',
+                    wsPort: 8085,
+                    wssPort: 8085,
+                    forceTLS: false,
+                    enabledTransports: ['ws', 'wss'],
+                    disableStats: true
+                });
+
+                echo.connector.pusher.connection.bind('connected', () => {
+                    log('✅ Connected successfully!');
+                    updateStatus(true);
+                    subscribeToCounter();
+                });
+
+                echo.connector.pusher.connection.bind('error', (err) => {
+                    log('❌ Connection error: ' + JSON.stringify(err));
+                    updateStatus(false);
+                });
+
+            } catch (error) {
+                log('❌ Failed to connect: ' + error.message);
+            }
+        };
+
+        const subscribeToCounter = () => {
+            log('Subscribing to test-counter channel...');
+            
+            const channel = echo.channel('test-counter');
+            
+            channel.subscribed(() => {
+                log('✅ Subscribed to test-counter channel');
+            });
+            
+            channel.error((err) => {
+                log('❌ Subscription error: ' + JSON.stringify(err));
+            });
+
+            // Get the underlying Pusher channel and bind to the event
+            const pusherChannel = echo.connector.pusher.channel('test-counter');
+            
+            // Bind to the exact event name that Reverb broadcasts
+            pusherChannel.bind('CounterUpdated', (data) => {
+                log('📊 CounterUpdated event received: ' + JSON.stringify(data));
+                if (data.counter !== undefined) {
+                    counter = data.counter;
+                    document.getElementById('counter').textContent = counter;
+                }
+            });
+
+            // Also bind to all events to debug
+            pusherChannel.bind_global((eventName, data) => {
+                log('🌐 Global: ' + eventName + ' => ' + JSON.stringify(data));
+            });
+        };
+
+        const sendIncrement = async () => {
+            counter++;
+            document.getElementById('counter').textContent = counter;
+            log('📤 Sending increment: ' + counter);
+
+            try {
+                const response = await fetch('http://noyaxi.test/api/test/counter', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json'
+                    },
+                    body: JSON.stringify({ counter: counter })
+                });
+
+                const data = await response.json();
+                log('✅ Broadcast sent: ' + JSON.stringify(data));
+            } catch (error) {
+                log('❌ Send failed: ' + error.message);
+            }
+        };
+
+        // Auto-connect on page load
+        window.addEventListener('load', connectReverb);
+    </script>
+</body>
+</html>

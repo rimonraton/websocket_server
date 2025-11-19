@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reverb Connection Test</title>
+    <script src="https://cdn.jsdelivr.net/npm/pusher-js@8.4.0-rc2/dist/web/pusher.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/laravel-echo@1.16.1/dist/echo.iife.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+        }
+        .log {
+            background: #f5f5f5;
+            border: 1px solid #ddd;
+            padding: 15px;
+            margin: 20px 0;
+            max-height: 400px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        .log-entry {
+            margin: 5px 0;
+            padding: 5px;
+        }
+        .log-entry.success { color: green; }
+        .log-entry.error { color: red; }
+        .log-entry.info { color: blue; }
+        button {
+            background: #4CAF50;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover { background: #45a049; }
+        button.secondary { background: #2196F3; }
+        button.secondary:hover { background: #0b7dda; }
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 5px;
+            font-weight: bold;
+        }
+        .status.connected { background: #d4edda; color: #155724; }
+        .status.disconnected { background: #f8d7da; color: #721c24; }
+    </style>
+</head>
+<body>
+    <h1>Reverb WebSocket Connection Test</h1>
+    
+    <div id="status" class="status disconnected">Status: Disconnected</div>
+    
+    <div>
+        <button onclick="connectToReverb()">Connect to Reverb</button>
+        <button onclick="subscribeToDrivers()" class="secondary">Subscribe to Drivers Channel</button>
+        <button onclick="testRideRequest()" class="secondary">Send Test Ride Request</button>
+        <button onclick="clearLog()" class="secondary">Clear Log</button>
+    </div>
+    
+    <h3>Connection Log:</h3>
+    <div id="log" class="log"></div>
+
+    <script>
+        let echo = null;
+        let driversChannel = null;
+
+        const log = (message, type = 'info') => {
+            const logDiv = document.getElementById('log');
+            const entry = document.createElement('div');
+            entry.className = `log-entry ${type}`;
+            entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            logDiv.appendChild(entry);
+            logDiv.scrollTop = logDiv.scrollHeight;
+            console.log(message);
+        };
+
+        const updateStatus = (connected) => {
+            const statusDiv = document.getElementById('status');
+            if (connected) {
+                statusDiv.className = 'status connected';
+                statusDiv.textContent = 'Status: Connected ✅';
+            } else {
+                statusDiv.className = 'status disconnected';
+                statusDiv.textContent = 'Status: Disconnected ❌';
+            }
+        };
+
+        const clearLog = () => {
+            document.getElementById('log').innerHTML = '';
+            log('Log cleared', 'info');
+        };
+
+        const connectToReverb = () => {
+            try {
+                log('Initializing Echo with Reverb...', 'info');
+                
+                window.Pusher = Pusher;
+                
+                echo = new Echo({
+                    broadcaster: 'reverb',
+                    key: 'ozfq1oewbwd3vaduekjs',
+                    wsHost: 'localhost',
+                    wsPort: 8085,
+                    wssPort: 8085,
+                    forceTLS: false,
+                    enabledTransports: ['ws', 'wss'],
+                    disableStats: true
+                });
+
+                log('Echo instance created', 'success');
+
+                // Connection event listeners
+                echo.connector.pusher.connection.bind('connected', () => {
+                    log('✅ Connected to Reverb successfully!', 'success');
+                    updateStatus(true);
+                });
+
+                echo.connector.pusher.connection.bind('disconnected', () => {
+                    log('❌ Disconnected from Reverb', 'error');
+                    updateStatus(false);
+                });
+
+                echo.connector.pusher.connection.bind('error', (err) => {
+                    log(`❌ Connection error: ${JSON.stringify(err)}`, 'error');
+                    updateStatus(false);
+                });
+
+                echo.connector.pusher.connection.bind('state_change', (states) => {
+                    log(`State changed: ${states.previous} → ${states.current}`, 'info');
+                });
+
+                log('Event listeners attached. Waiting for connection...', 'info');
+
+            } catch (error) {
+                log(`❌ Failed to initialize Echo: ${error.message}`, 'error');
+                console.error(error);
+            }
+        };
+
+        const subscribeToDrivers = () => {
+            if (!echo) {
+                log('❌ Echo not initialized. Click "Connect to Reverb" first.', 'error');
+                return;
+            }
+
+            try {
+                log('Subscribing to "drivers" channel...', 'info');
+                
+                driversChannel = echo.channel('drivers');
+
+                driversChannel.subscribed(() => {
+                    log('✅ Successfully subscribed to "drivers" channel', 'success');
+                });
+
+                driversChannel.error((error) => {
+                    log(`❌ Channel subscription error: ${JSON.stringify(error)}`, 'error');
+                });
+
+                driversChannel.listen('RideRequest', (data) => {
+                    log('🚗 RideRequest event received!', 'success');
+                    log(`Event data: ${JSON.stringify(data, null, 2)}`, 'success');
+                    alert('New Ride Request Received! Check console for details.');
+                });
+
+                log('Listening for RideRequest events...', 'info');
+
+            } catch (error) {
+                log(`❌ Failed to subscribe: ${error.message}`, 'error');
+                console.error(error);
+            }
+        };
+
+        const testRideRequest = async () => {
+            try {
+                log('Sending test ride request to API...', 'info');
+                
+                const response = await fetch('http://noyaxi.test/api/rides', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        pickup: 'Test Pickup Location',
+                        destination: 'Test Destination',
+                        vehicleType: 'car',
+                        price: 100,
+                        distance: 5.5,
+                        duration: 15
+                    })
+                });
+
+                const data = await response.json();
+                
+                if (data.success) {
+                    log(`✅ Test ride created successfully! Ride ID: ${data.data.rideId}`, 'success');
+                    log(`API Response: ${JSON.stringify(data, null, 2)}`, 'info');
+                } else {
+                    log(`❌ Failed to create ride: ${JSON.stringify(data)}`, 'error');
+                }
+
+            } catch (error) {
+                log(`❌ API request failed: ${error.message}`, 'error');
+                console.error(error);
+            }
+        };
+
+        // Auto-connect on page load
+        window.addEventListener('load', () => {
+            log('Page loaded. Ready to test Reverb connection.', 'info');
+            log('Configuration: localhost:8085, key: ozfq1oewbwd3vaduekjs', 'info');
+            log('', 'info');
+            log('Instructions:', 'info');
+            log('1. Make sure Reverb server is running: php artisan reverb:start --port=8085', 'info');
+            log('2. Click "Connect to Reverb"', 'info');
+            log('3. Click "Subscribe to Drivers Channel"', 'info');
+            log('4. Click "Send Test Ride Request" to trigger broadcast', 'info');
+            log('', 'info');
+        });
+    </script>
+</body>
+</html>

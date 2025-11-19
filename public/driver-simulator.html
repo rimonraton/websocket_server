@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Driver Position Simulator - Reverb Test</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 p-8">
+    <div class="max-w-2xl mx-auto bg-white rounded-lg shadow-md p-6">
+        <h1 class="text-3xl font-bold mb-6 text-center">Driver Position Simulator</h1>
+        
+        <div class="space-y-4">
+            <div>
+                <label class="block text-sm font-medium mb-2">Ride ID</label>
+                <input type="text" id="rideId" value="ride-123" 
+                    class="w-full border border-gray-300 rounded-md p-2 focus:ring-2 focus:ring-blue-500">
+            </div>
+
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-sm font-medium mb-2">Latitude</label>
+                    <input type="number" id="lat" value="23.8103" step="0.0001"
+                        class="w-full border border-gray-300 rounded-md p-2 focus:ring-2 focus:ring-blue-500">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium mb-2">Longitude</label>
+                    <input type="number" id="lng" value="90.4125" step="0.0001"
+                        class="w-full border border-gray-300 rounded-md p-2 focus:ring-2 focus:ring-blue-500">
+                </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-sm font-medium mb-2">Bearing (degrees)</label>
+                    <input type="number" id="bearing" value="45" step="1" min="0" max="360"
+                        class="w-full border border-gray-300 rounded-md p-2 focus:ring-2 focus:ring-blue-500">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium mb-2">Speed (km/h)</label>
+                    <input type="number" id="speed" value="40" step="1"
+                        class="w-full border border-gray-300 rounded-md p-2 focus:ring-2 focus:ring-blue-500">
+                </div>
+            </div>
+
+            <div>
+                <label class="block text-sm font-medium mb-2">Driver ID</label>
+                <input type="text" id="driverId" value="driver-001"
+                    class="w-full border border-gray-300 rounded-md p-2 focus:ring-2 focus:ring-blue-500">
+            </div>
+
+            <button onclick="sendPosition()" 
+                class="w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 rounded-md transition">
+                Send Position Update
+            </button>
+
+            <button onclick="startAutoUpdate()" id="autoBtn"
+                class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-3 rounded-md transition">
+                Start Auto Update (every 2s)
+            </button>
+
+            <button onclick="stopAutoUpdate()" id="stopBtn" style="display:none;"
+                class="w-full bg-red-500 hover:bg-red-600 text-white font-bold py-3 rounded-md transition">
+                Stop Auto Update
+            </button>
+        </div>
+
+        <div class="mt-6 p-4 bg-gray-50 rounded-md">
+            <h2 class="font-semibold mb-2">Response Log:</h2>
+            <div id="log" class="text-sm text-gray-700 max-h-64 overflow-y-auto font-mono"></div>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = 'http://noyaxi.test/api';
+        let autoUpdateInterval = null;
+
+        function log(message, isError = false) {
+            const logDiv = document.getElementById('log');
+            const time = new Date().toLocaleTimeString();
+            const color = isError ? 'text-red-600' : 'text-green-600';
+            logDiv.innerHTML = `<div class="${color}">[${time}] ${message}</div>` + logDiv.innerHTML;
+        }
+
+        async function sendPosition() {
+            const rideId = document.getElementById('rideId').value;
+            const lat = parseFloat(document.getElementById('lat').value);
+            const lng = parseFloat(document.getElementById('lng').value);
+            const bearing = parseFloat(document.getElementById('bearing').value);
+            const speed = parseFloat(document.getElementById('speed').value);
+            const driverId = document.getElementById('driverId').value;
+
+            try {
+                const response = await fetch(`${API_URL}/rides/${rideId}/position`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        lat,
+                        lng,
+                        bearing,
+                        speed,
+                        driverId
+                    })
+                });
+
+                const data = await response.json();
+                
+                if (data.success) {
+                    log(`✓ Position updated: (${lat}, ${lng})`);
+                    // Increment lat slightly for auto-update simulation
+                    document.getElementById('lat').value = (lat + 0.0001).toFixed(4);
+                } else {
+                    log(`✗ Error: ${JSON.stringify(data.errors || data)}`, true);
+                }
+            } catch (error) {
+                log(`✗ Network error: ${error.message}`, true);
+            }
+        }
+
+        function startAutoUpdate() {
+            if (autoUpdateInterval) return;
+            
+            autoUpdateInterval = setInterval(sendPosition, 2000);
+            document.getElementById('autoBtn').style.display = 'none';
+            document.getElementById('stopBtn').style.display = 'block';
+            log('Auto-update started (every 2 seconds)');
+        }
+
+        function stopAutoUpdate() {
+            if (autoUpdateInterval) {
+                clearInterval(autoUpdateInterval);
+                autoUpdateInterval = null;
+            }
+            document.getElementById('autoBtn').style.display = 'block';
+            document.getElementById('stopBtn').style.display = 'none';
+            log('Auto-update stopped');
+        }
+
+        // Log initial info
+        log('Driver simulator ready. Configure ride ID and click "Send Position Update"');
+    </script>
+</body>
+</html>
